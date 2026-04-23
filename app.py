@@ -19,8 +19,8 @@ import jwt
 import bcrypt
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'aquaguard-super-secret-key-2026'
-app.config['JWT_SECRET'] = 'aquaguard-jwt-secret-2026'
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'aquaguard-super-secret-key-2026')
+app.config['JWT_SECRET'] = os.environ.get('JWT_SECRET', 'aquaguard-jwt-secret-2026')
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'aquaguard.db')
@@ -784,4 +784,5 @@ def init_db():
 
 if __name__ == '__main__':
     init_db()
-    app.run(debug=True, port=5000)
+    port = int(os.environ.get('PORT', 5000))
+    app.run(debug=False, host='0.0.0.0', port=port)
