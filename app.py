@@ -318,9 +318,9 @@ def get_security_stats():
 MODEL = None
 SCALER = None
 try:
-    with open('outbreak_model.pkl', 'rb') as f:
+    with open('models/outbreak_model.pkl', 'rb') as f:
         MODEL = pickle.load(f)
-    with open('scaler.pkl', 'rb') as f:
+    with open('models/scaler.pkl', 'rb') as f:
         SCALER = pickle.load(f)
     print("ML Model and Scaler loaded successfully.")
 except Exception as e:
@@ -330,13 +330,13 @@ except Exception as e:
 SIH_DATA = None
 WATER_DATA = None
 try:
-    SIH_DATA = pd.read_csv('sih_ner_health_data.csv')
+    SIH_DATA = pd.read_csv('data/sih_ner_health_data.csv')
     print(f"SIH data loaded: {SIH_DATA.shape}")
 except:
     print("sih_ner_health_data.csv not found")
 
 try:
-    WATER_DATA = pd.read_csv('water_pollution_disease.csv')
+    WATER_DATA = pd.read_csv('data/water_pollution_disease.csv')
     print(f"Water pollution data loaded: {WATER_DATA.shape}")
 except:
     print("water_pollution_disease.csv not found")
