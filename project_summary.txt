@@ -1,0 +1,42 @@
+AquaGuard — Water Disease Early Warning System
+================================================
+
+1. Project Overview & Objective
+-------------------------------
+"AquaGuard" is a comprehensive, state-of-the-art public health dashboard and monitoring system. Designed as an early warning system for waterborne diseases, it integrates real-time geospatial mapping, machine learning predictions, and robust cybersecurity features. The platform is built to handle critical infrastructure data, catering to multiple roles—including Administrators, District Officers, Field Inspectors, and the General Public—with role-specific access and interfaces.
+
+2. What We Have Implemented (Features & UI)
+-------------------------------------------
+The platform is divided into three main interfaces:
+
+A. The Public Portal (Citizen-Facing)
+- Designed using strict Government of India (NIC) styling standards: clean white/grey backgrounds, high information density, and official navy blue branding with a custom water-drop shield emblem.
+- Interactive Modals: Citizens can click on "Government Schemes" to read detailed overlays about Jal Jeevan Mission, NWQSM, etc.
+- Live Alerts: Dedicated pop-ups for "Active Advisories" (e.g., Boil Water notices) and "Health Alerts" (e.g., Cholera outbreaks in specific districts).
+- Citizen Services: Features interactive data scorecards and a functional district WQI data download button.
+
+B. The Secure Login Portal
+- A highly professional, secure entry point featuring official government branding and warnings ("For Authorized Use Only").
+- Interactive modals for "Forgot Password" and "Request Portal Access" (with a mock application generation process).
+
+C. The Admin / Operations Dashboard
+- Geospatial Mapping: A central Leaflet.js interactive map plotting sensors and regions with color-coded risk levels.
+- Analytics Panels: Translucent "glass-cards" containing Regional Statistics, Chart.js graphs for Weekly Risk Trends, and a Disease Case Tracker.
+- Real-Time Feed: Right-hand panels displaying Public Health Alerts and Active Sensor Anomalies.
+- AI Risk Prediction: A dedicated tool where officers adjust sliders (pH, Turbidity, etc.) and hit "Run AI Diagnostic" to get an instant disease outbreak probability score.
+- Cyber Defense Tools: Includes an Immutable Audit Trail for logging actions securely and an interactive WAF (Web Application Firewall) toggle to simulate defense against DDoS attacks.
+
+3. How We Have Implemented It (Technical Stack)
+-----------------------------------------------
+- Backend Framework: Python Flask drives the application, serving templates and handling all API routes.
+- Database Integration: We transitioned from mock JavaScript data to a robust SQLite Database using Flask-SQLAlchemy.
+- Secure Authentication: Replaced frontend mock-login with a secure backend authentication system using Flask-Login and Bcrypt to securely hash and verify passwords stored in the database. JWT (JSON Web Tokens) are used for role-based session management.
+- Machine Learning Integration: A pre-trained scikit-learn model (`outbreak_model.pkl` and `scaler.pkl`) evaluates environmental parameters passed from the frontend to predict contamination risks via the `/api/predict` route.
+- Frontend Architecture: Built using Vanilla HTML5, CSS3, and ES6 JavaScript. The design relies on CSS Grid/Flexbox and masonry layouts to create a seamless, app-like experience without heavy frontend frameworks.
+- Security Middleware: A custom Python middleware acts as a WAF, actively scanning incoming requests to block SQL Injection (SQLi) and Cross-Site Scripting (XSS). Rate limiting is enforced using Flask-Limiter.
+
+4. The Operational Workflow
+---------------------------
+1. Public Access: Citizens view the public dashboard for real-time safety advisories and to learn about water quality in their district.
+2. Secure Login: Government officials log in. The backend queries the SQLite database, verifies their hashed password, and grants a secure session based on their role (Admin, Officer, Inspector).
+3. Monitoring & Action: Once authenticated, officials access the main dashboard. They monitor the live map, review AI-generated risk predictions, manage operation tickets (e.g., dispatching inspectors to anomalous sensors), and review the immutable security audit logs to ensure data integrity.

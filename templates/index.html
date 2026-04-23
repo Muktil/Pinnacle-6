@@ -1,0 +1,959 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AquaGuard — Public Health Dashboard</title>
+    <meta name="description" content="AquaGuard Public Health Dashboard — Water Disease Early Warning System">
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- App CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- Leaflet Heat Plugin -->
+    <script src="https://unpkg.com/leaflet.heat@0.2.0/dist/leaflet-heat.js"></script>
+    <!-- jsPDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+</head>
+<body>
+
+    <!-- ======= MAP BACKGROUND MOVED TO CENTER COLUMN ======= -->
+    <div class="map-overlay" style="display:none;"></div>
+
+    <!-- ======= OPERATION TICKETS MODAL ======= -->
+    <div class="modal-overlay" id="ticketsModal">
+        <div class="modal-content" style="max-width:800px;">
+            <div class="modal-header">
+                <h2>📋 Operation Tickets</h2>
+                <button class="modal-close" onclick="closeModal('ticketsModal')">✕</button>
+            </div>
+            
+            <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
+                <button onclick="createNewTicket()" style="background:var(--navy);color:white;padding:8px 12px;border:none;border-radius:4px;cursor:pointer;">+ New Ticket</button>
+                <button onclick="officerCheckIn()" id="btn-checkin" style="background:#10b981;color:white;padding:8px 12px;border:none;border-radius:4px;cursor:pointer; display:none;">📍 Field Check-In</button>
+            </div>
+
+            <table style="width: 100%; border-collapse: collapse; margin-top: 10px;">
+                <thead>
+                    <tr style="background:#f1f5f9; text-align: left;">
+                        <th style="padding:10px; border-bottom:1px solid #cbd5e1;">ID</th>
+                        <th style="padding:10px; border-bottom:1px solid #cbd5e1;">Title</th>
+                        <th style="padding:10px; border-bottom:1px solid #cbd5e1;">Status</th>
+                        <th style="padding:10px; border-bottom:1px solid #cbd5e1;">Assignee</th>
+                        <th style="padding:10px; border-bottom:1px solid #cbd5e1;">Created</th>
+                        <th style="padding:10px; border-bottom:1px solid #cbd5e1;">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="tickets-tbody">
+                    <!-- Populated via JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ======= SESSION TIMEOUT MODAL ======= -->
+    <div class="modal-overlay" id="sessionTimeoutModal" style="z-index: 10000;">
+        <div class="modal-content" style="max-width:400px; text-align:center;">
+            <h2 style="color:var(--danger-red); margin-bottom: 1rem;">Session Expiring Soon</h2>
+            <p>Your session will expire in <strong id="timeout-countdown">60</strong> seconds due to inactivity.</p>
+            <div style="margin-top: 1.5rem;">
+                <button onclick="stayLoggedIn()" style="background:var(--navy);color:white;padding:10px 20px;border:none;border-radius:4px;cursor:pointer;">Stay Logged In</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======= ENCRYPTION VISUALIZER ======= -->
+    <div class="ui-layer">
+
+        <!-- ===== TOP BAR — Dark Navy ===== -->
+        <div class="top-bar">
+            <div class="top-bar-left">
+                <div class="app-logo">
+                    <div style="width: 36px; height: 36px; border-radius: 50%; border: 1px solid #fff; display:flex; align-items:center; justify-content:center; font-size:18px;">💧</div>
+                    <div>
+                        <h1><span data-i18n="title">AquaGuard</span></h1>
+                        <div class="subtitle">Public Health Dashboard</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="top-bar-center">
+                <div class="nav-links">
+                    <button class="nav-link active" data-nav="safety" onclick="setActiveNav(this)" data-i18n="nav.safety">Home</button>
+                    <button class="nav-link" data-nav="defend" onclick="setActiveNav(this)" data-i18n="nav.defend">Alerts</button>
+                    <button class="nav-link" data-nav="danger" onclick="setActiveNav(this)" data-i18n="nav.danger">Data</button>
+                    <button class="nav-link" data-nav="officer" onclick="setActiveNav(this)" data-i18n="nav.officer">Reports</button>
+                    <button class="nav-link" data-nav="task" onclick="setActiveNav(this)" data-i18n="nav.task">Agency</button>
+                </div>
+            </div>
+
+            <div class="top-bar-right">
+                <div style="font-size: 0.75rem; color: #9ca3af; margin-right: 15px;">
+                    Data last synchronized: <span id="sync-timestamp">21-Apr-2026, 08:00 IST</span>
+                </div>
+                <div class="user-profile" onclick="toggleHamburger()">
+                    <span class="user-icon">👤</span>
+                    <span>User profile ▾</span>
+                </div>
+                <a href="/logout" class="logout-link">Logout</a>
+            </div>
+        </div>
+
+        <!-- ===== HAMBURGER SLIDE-IN PANEL ===== -->
+        <div class="hamburger-overlay" id="hamburger-overlay" onclick="toggleHamburger()"></div>
+        <div class="hamburger-panel" id="hamburger-panel">
+            <div class="hamburger-header">
+                <h2>Control Panel</h2>
+                <button class="hamburger-close" onclick="toggleHamburger()">✕</button>
+            </div>
+
+            <!-- Profile Section -->
+            <div class="hamburger-section">
+                <div class="hamburger-section-title">Profile</div>
+                <div class="hamburger-item" style="flex-direction: column; align-items: flex-start;">
+                    <label>Assigned Role</label>
+                    <div id="role-badge" style="margin-top: 5px; background: rgba(255,255,255,0.06); padding: 6px 10px; border-radius: 6px; border: 1px solid #60a5fa; font-size: 0.8rem; font-weight: bold; display: inline-flex; align-items: center; gap: 8px;">
+                        <span id="role-icon">👤</span> <span id="role-text" style="color:#60a5fa;">Loading...</span>
+                    </div>
+                </div>
+                <div class="hamburger-item">
+                    <label>Language</label>
+                    <select class="lang-selector" id="lang-selector" onchange="changeLanguage(this.value)">
+                        <option value="en">English</option>
+                        <option value="hi">हिंदी</option>
+                        <option value="as">অসমীয়া</option>
+                        <option value="fr">Français</option>
+                        <option value="es">Español</option>
+                        <option value="pt">Português</option>
+                    </select>
+                </div>
+            </div>
+
+
+
+            <!-- Tools Section -->
+            <div class="hamburger-section">
+                <div class="hamburger-section-title">Tools</div>
+                <button class="hamburger-tool-btn" onclick="openModal('dashboardModal'); toggleHamburger();" data-role="admin">Dashboard Analytics</button>
+                <button class="hamburger-tool-btn" onclick="openModal('advisoryModal'); toggleHamburger();" data-role="admin">Publish Advisory</button>
+                <button class="hamburger-tool-btn" onclick="openTicketsModal(); toggleHamburger();" data-role="admin officer">Operation Tickets</button>
+                <button class="hamburger-tool-btn" onclick="openModal('alarmModal'); toggleHamburger();" data-role="admin officer">Alarm Manager</button>
+                <button class="hamburger-tool-btn" onclick="openModal('uploadModal'); toggleHamburger();" data-role="admin">Upload Data (CSV/Excel)</button>
+                <button class="hamburger-tool-btn" onclick="downloadSensorCSV('All_Nodes', 'Raw Data', 'Multiple', 'N/A')" data-role="admin officer">Download Raw Data (CSV)</button>
+                <button class="hamburger-tool-btn" onclick="downloadReport(); toggleHamburger();" data-role="admin officer">Generate PDF Report</button>
+                <button class="hamburger-tool-btn" onclick="openModal('auditModal'); toggleHamburger();" data-role="admin">Audit Trail Log</button>
+            </div>
+
+            <!-- Map Layers Section -->
+            <div class="hamburger-section">
+                <div class="hamburger-section-title">Map Layers</div>
+                <div class="hamburger-layers">
+                    <button class="layer-pill active" id="lyr-markers" onclick="toggleMapLayer('markers', this)">Markers</button>
+                    <button class="layer-pill" id="lyr-heatmap" onclick="toggleMapLayer('heatmap', this)">Heatmap</button>
+                    <button class="layer-pill active" id="lyr-rivers" onclick="toggleMapLayer('rivers', this)">Rivers</button>
+                    <button class="layer-pill" id="lyr-districts" onclick="toggleMapLayer('districts', this)">Districts</button>
+                    <button class="layer-pill" id="lyr-floods" onclick="toggleMapLayer('floods', this)">Floods</button>
+                    <button class="layer-pill" id="lyr-hospitals" onclick="toggleMapLayer('hospitals', this)">Hospitals</button>
+                </div>
+            </div>
+
+            <!-- Critical System Failure Overlay Removed for Production -->
+
+            <!-- Quick Stats -->
+            <div class="hamburger-section">
+                <div class="hamburger-section-title">Quick Stats</div>
+                <div class="hamburger-kpis">
+                    <div class="hamburger-kpi">
+                        <span class="kpi-icon">💧</span>
+                        <span class="kpi-value" id="kpi-sources">—</span>
+                        <span class="kpi-label" data-i18n="kpi.sources">Sources</span>
+                    </div>
+                    <div class="hamburger-kpi">
+                        <span class="kpi-icon">🧪</span>
+                        <span class="kpi-value" id="kpi-tests">—</span>
+                        <span class="kpi-label" data-i18n="kpi.tests">Tests</span>
+                    </div>
+                    <div class="hamburger-kpi">
+                        <span class="kpi-icon">📦</span>
+                        <span class="kpi-value" id="kpi-supplies">—</span>
+                        <span class="kpi-label" data-i18n="kpi.supplies">Supplies</span>
+                    </div>
+                    <div class="hamburger-kpi">
+                        <span class="kpi-icon">🏥</span>
+                        <span class="kpi-value" id="kpi-facilities">—</span>
+                        <span class="kpi-label" data-i18n="kpi.facilities">Facilities</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Admin Settings Section -->
+            <div class="hamburger-section">
+                <div class="hamburger-section-title">Settings</div>
+                <div class="hamburger-item">
+                    <label>Scheduled Report Emails</label>
+                    <label class="switch">
+                        <input type="checkbox" checked>
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Accessibility Section -->
+            <div class="hamburger-section">
+                <div class="hamburger-section-title">Accessibility</div>
+                <div class="hamburger-item">
+                    <label>High Contrast</label>
+                    <label class="switch">
+                        <input type="checkbox" id="high-contrast-toggle" onchange="toggleHighContrast(this)">
+                        <span class="slider round"></span>
+                    </label>
+                </div>
+                <div class="hamburger-item" style="margin-bottom:0;">
+                    <label>Text Size</label>
+                    <div class="font-size-controls">
+                        <button class="font-btn" onclick="changeFontSize(-1)">A-</button>
+                        <button class="font-btn" onclick="changeFontSize(1)">A+</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ===== PUBLIC ADVISORY BANNER ===== -->
+        <div class="advisory-banner" id="advisory-banner" style="display:none;">
+            <span class="advisory-icon">⚠️</span>
+            <span class="advisory-text" id="advisory-text">BOIL WATER ADVISORY — Guwahati Sector 5 — Issued 11 Mar 2026</span>
+            <button class="advisory-withdraw" onclick="withdrawAdvisory()" data-role="admin">Withdraw Advisory</button>
+        </div>
+
+        <!-- ===== MAIN CONTENT: LEFT | CENTER | RIGHT ===== -->
+        <div class="main-content">
+
+            <!-- === LEFT PANEL === -->
+            <div class="left-panel" id="left-panel">
+                
+                <!-- Filter Bar -->
+                <div class="filter-bar" style="display:flex; gap:10px; margin-bottom:10px;">
+                    <select id="filter-period" class="form-control" style="flex:1; padding:6px; font-size:0.8rem; border:1px solid #d1d5db; border-radius:4px;" onchange="applyDashboardFilters()">
+                        <option value="7">Last 7 Days</option>
+                        <option value="30">Last 30 Days</option>
+                        <option value="365">This Year</option>
+                    </select>
+                    <select id="filter-region" class="form-control" style="flex:1; padding:6px; font-size:0.8rem; border:1px solid #d1d5db; border-radius:4px;" onchange="applyDashboardFilters()">
+                        <option value="all">All Regions</option>
+                        <option value="guwahati">Guwahati Sector</option>
+                        <option value="imphal">Imphal East</option>
+                    </select>
+                </div>
+
+                <!-- Regional Statistics -->
+                <div class="glass-card">
+                    <h3 class="expandable" onclick="openFullPage('fp-data-overview')"><span data-i18n="dataOverview">Regional Statistics</span></h3>
+                    <div class="data-overview-grid">
+                        <div class="data-tile">
+                            <div class="tile-label" data-i18n="warnings">Total Warnings:</div>
+                            <div class="tile-value" id="tile-warnings">625</div>
+                            <div class="change-badge" style="color: #ef4444;">(Up 18%)</div>
+                        </div>
+                        <div class="data-tile">
+                            <div class="tile-label" data-i18n="dangers">Danger Areas:</div>
+                            <div class="tile-value" id="tile-dangers">120</div>
+                            <div class="change-badge" style="color: #10b981;">(Down 9%)</div>
+                        </div>
+                        <div class="data-tile">
+                            <div class="tile-label" data-i18n="monitoring">Active Monitoring:</div>
+                            <div class="tile-value" id="tile-monitoring">100</div>
+                            <div class="change-badge" style="color: #ef4444;">(Up 9%)</div>
+                        </div>
+                        <div class="data-tile">
+                            <div class="tile-label" data-i18n="contamination">Contamination Cases:</div>
+                            <div class="tile-value" id="tile-contamination">187</div>
+                            <div class="change-badge" style="color: #ef4444;">(Up 5%)</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Risk Analysis - Weekly Trend -->
+                <div class="glass-card" style="flex:1;">
+                    <h3 class="expandable" onclick="openFullPage('fp-weekly')"><span data-i18n="dualPrev">Risk Analysis - Weekly Trend</span></h3>
+                    <div class="risk-summary" id="risk-summary" style="display:none;"></div>
+                    <div class="chart-container" style="height:220px;">
+                        <canvas id="weeklyChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Operation Tickets -->
+                <div class="glass-card" data-role="admin officer">
+                    <h3 class="expandable" onclick="openFullPage('fp-operations')"><span class="icon">🎫</span> <span data-i18n="opTickets">Operation Tickets</span></h3>
+                    <div class="chart-container">
+                        <canvas id="operationChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Disease Case Tracker -->
+                <div class="glass-card">
+                    <h3><span class="icon">🦠</span> Disease Case Tracker</h3>
+                    <div class="disease-grid" id="disease-grid">
+                        <div class="disease-card" data-disease="cholera">
+                            <div class="disease-name">Cholera</div>
+                            <div class="disease-cases" id="dc-cholera">—</div>
+                            <div class="disease-change" id="dc-cholera-change">—</div>
+                        </div>
+                        <div class="disease-card" data-disease="typhoid">
+                            <div class="disease-name">Typhoid</div>
+                            <div class="disease-cases" id="dc-typhoid">—</div>
+                            <div class="disease-change" id="dc-typhoid-change">—</div>
+                        </div>
+                        <div class="disease-card" data-disease="hepatitis">
+                            <div class="disease-name">Hepatitis A</div>
+                            <div class="disease-cases" id="dc-hepatitis">—</div>
+                            <div class="disease-change" id="dc-hepatitis-change">—</div>
+                        </div>
+                        <div class="disease-card" data-disease="dysentery">
+                            <div class="disease-name">Dysentery</div>
+                            <div class="disease-cases" id="dc-dysentery">—</div>
+                            <div class="disease-change" id="dc-dysentery-change">—</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- WQI 30-Day Timeline -->
+                <div class="glass-card">
+                    <h3><span class="icon">📈</span> Water Quality Index — 30 Day</h3>
+                    <div class="wqi-toggles" id="wqi-toggles">
+                        <button class="wqi-toggle active" data-param="ph" onclick="toggleWQILine('ph', this)">pH</button>
+                        <button class="wqi-toggle active" data-param="turbidity" onclick="toggleWQILine('turbidity', this)">Turb</button>
+                        <button class="wqi-toggle active" data-param="ecoli" onclick="toggleWQILine('ecoli', this)">E.Coli</button>
+                        <button class="wqi-toggle" data-param="chlorine" onclick="toggleWQILine('chlorine', this)">Cl</button>
+                        <button class="wqi-toggle" data-param="do" onclick="toggleWQILine('do', this)">DO</button>
+                        <button class="wqi-toggle" data-param="temp" onclick="toggleWQILine('temp', this)">Temp</button>
+                    </div>
+                    <div class="chart-container" style="height:180px;">
+                        <canvas id="wqiChart"></canvas>
+                    </div>
+                </div>
+
+                <!-- Hidden stat holders for JS -->
+                <div style="display:none;">
+                    <span id="tile-risk-areas"></span>
+                    <span id="tile-risk-points"></span>
+                    <span id="tile-resolved"></span>
+                </div>
+
+                <!-- Field Officer Activity -->
+                <div class="glass-card" data-role="admin officer">
+                    <h3><span class="icon">👤</span> Field Officer Activity</h3>
+                    <div class="officer-table-wrap">
+                        <table class="officer-table">
+                            <thead>
+                                <tr><th>Officer</th><th>Zone</th><th>Check-in</th><th>Status</th></tr>
+                            </thead>
+                            <tbody id="officer-tbody"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <button class="panel-toggle toggle-left" id="toggle-left" onclick="toggleSidePanel('left')" title="Toggle Left Panel">◀</button>
+
+            <!-- === CENTER MAP CONTAINER === -->
+            <div class="center-spacer" style="background: #fff; border: 1px solid #d1d5db; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); overflow: hidden; position: relative; display:flex; flex-direction:column; pointer-events: auto;">
+                <div style="padding: 12px 16px; border-bottom: 1px solid #d1d5db; background: #fff; z-index: 2;">
+                    <h3 style="margin: 0; font-family: var(--font-serif); font-size: 1.05rem; color: #111827;">Geospatial Overview</h3>
+                </div>
+                <div id="map" style="flex: 1; width: 100%; z-index: 1;"></div>
+            </div>
+
+            <button class="panel-toggle toggle-right" id="toggle-right" onclick="toggleSidePanel('right')" title="Toggle Right Panel">▶</button>
+
+            <!-- === RIGHT PANEL === -->
+            <div class="right-panel" id="right-panel">
+                <!-- Public Health Alerts -->
+                <div class="glass-card">
+                    <h3 class="expandable" onclick="openFullPage('fp-alarms')"><span data-i18n="alarmStatus">Public Health Alerts</span></h3>
+                    <div class="alarm-feed" id="alarm-feed">
+                        <!-- Dynamically populated -->
+                    </div>
+                </div>
+
+                <!-- Agency Bulletins / Danger Source -->
+                <div class="glass-card" style="flex:1;">
+                    <h3 class="expandable" onclick="openFullPage('fp-danger')"><span data-i18n="dangerSource">Agency Bulletins</span></h3>
+                    <p style="font-size: 0.75rem; color: var(--text-muted); margin-bottom: 8px; font-weight: 600;">Active Sensor Alerts</p>
+                    <table class="danger-table">
+                        <thead>
+                            <tr>
+                                <th data-i18n="device">Device</th>
+                                <th>Alert Type</th>
+                                <th data-i18n="value">Value</th>
+                                <th data-i18n="range">Range</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody id="danger-tbody">
+                            <!-- Dynamically rendered -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </div><!-- end .ui-layer -->
+
+
+    <!-- ======= FULL-PAGE VIEWS ======= -->
+
+    <!-- FP: Data Overview -->
+    <div class="fullpage-overlay" id="fp-data-overview">
+        <div class="fullpage-header">
+            <button class="back-btn" onclick="closeFullPage('fp-data-overview')">← Back</button>
+            <h2 class="fullpage-title">📋 Data Overview — Full View</h2>
+        </div>
+        <div class="fullpage-body">
+            <div class="fullpage-grid" id="fp-data-grid">
+                <div class="data-tile tile-warning">
+                    <div class="tile-value" id="fp-tile-warnings">—</div>
+                    <div class="tile-label">Warnings Issued</div>
+                </div>
+                <div class="data-tile tile-danger">
+                    <div class="tile-value" id="fp-tile-dangers">—</div>
+                    <div class="tile-label">Danger Zones Active</div>
+                </div>
+                <div class="data-tile tile-info">
+                    <div class="tile-value" id="fp-tile-monitoring">—</div>
+                    <div class="tile-label">Sites Under Monitoring</div>
+                </div>
+                <div class="data-tile tile-orange">
+                    <div class="tile-value" id="fp-tile-contamination">—</div>
+                    <div class="tile-label">Contamination Events</div>
+                </div>
+                <div class="data-tile tile-brown">
+                    <div class="tile-value" id="fp-tile-risk-areas">—</div>
+                    <div class="tile-label">Risk Areas Identified</div>
+                </div>
+                <div class="data-tile tile-green">
+                    <div class="tile-value" id="fp-tile-resolved">—</div>
+                    <div class="tile-label">Cases Resolved</div>
+                </div>
+            </div>
+            <div class="fullpage-chart-container">
+                <h3 style="margin-bottom:10px; font-weight:700; color:var(--navy);">State-wise Data Summary</h3>
+                <table class="fullpage-table">
+                    <thead>
+                        <tr>
+                            <th>State</th><th>Avg pH</th><th>Avg Turbidity</th><th>Avg Temp</th><th>Bacteria CFU</th><th>Risk %</th><th>Samples</th>
+                        </tr>
+                    </thead>
+                    <tbody id="fp-state-table-body"></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- FP: Risk Resolved This Week -->
+    <div class="fullpage-overlay" id="fp-weekly">
+        <div class="fullpage-header">
+            <button class="back-btn" onclick="closeFullPage('fp-weekly')">← Back</button>
+            <h2 class="fullpage-title">📊 Risk Resolved This Week — Full View</h2>
+        </div>
+        <div class="fullpage-body">
+            <div class="fullpage-chart-container">
+                <canvas id="fpWeeklyChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- FP: Operation Tickets -->
+    <div class="fullpage-overlay" id="fp-operations">
+        <div class="fullpage-header">
+            <button class="back-btn" onclick="closeFullPage('fp-operations')">← Back</button>
+            <h2 class="fullpage-title">🎫 Operation Tickets — Full View</h2>
+        </div>
+        <div class="fullpage-body">
+            <div class="fullpage-chart-container">
+                <canvas id="fpOperationChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- FP: Alarm Status -->
+    <div class="fullpage-overlay" id="fp-alarms">
+        <div class="fullpage-header">
+            <button class="back-btn" onclick="closeFullPage('fp-alarms')">← Back</button>
+            <h2 class="fullpage-title">🚨 Public Health Alerts — Full View</h2>
+        </div>
+        <div class="fullpage-body">
+            <div class="alarm-feed" id="fp-alarm-feed" style="max-height:none;"></div>
+            <button class="add-alarm-btn" onclick="closeFullPage('fp-alarms');openModal('alarmModal')" style="max-width:400px;">+ Add Manual Alarm</button>
+        </div>
+    </div>
+
+    <!-- FP: Danger Source -->
+    <div class="fullpage-overlay" id="fp-danger">
+        <div class="fullpage-header">
+            <button class="back-btn" onclick="closeFullPage('fp-danger')">← Back</button>
+            <h2 class="fullpage-title">⚡ Danger Source — Full View</h2>
+        </div>
+        <div class="fullpage-body">
+            <table class="fullpage-table">
+                <thead>
+                    <tr><th>Device ID</th><th>Parameter</th><th>Current Value</th><th>Safe Range</th><th>Status</th></tr>
+                </thead>
+                <tbody>
+                    <tr><td>ZAN01</td><td>Turbidity</td><td class="out-of-range">4.6 NTU</td><td>0–4 NTU</td><td><span class="status-badge danger">ALERT</span></td></tr>
+                    <tr><td>ZAN02</td><td>pH Level</td><td>7.8</td><td>6.5–8.5</td><td><span class="status-badge safe">NORMAL</span></td></tr>
+                    <tr><td>ZAN03</td><td>Residual Chlorine</td><td class="out-of-range">0.1 mg/L</td><td>0.2–1 mg/L</td><td><span class="status-badge danger">ALERT</span></td></tr>
+                    <tr><td>ZAN04</td><td>E.Coli</td><td class="out-of-range">Detected</td><td>None</td><td><span class="status-badge danger">CRITICAL</span></td></tr>
+                    <tr><td>ZAN05</td><td>Water Temperature</td><td class="out-of-range">29°C</td><td>20–25°C</td><td><span class="status-badge warning">WARNING</span></td></tr>
+                    <tr><td>ZAN06</td><td>Dissolved Oxygen</td><td>6.2 mg/L</td><td>5–9 mg/L</td><td><span class="status-badge safe">NORMAL</span></td></tr>
+                    <tr><td>ZAN07</td><td>Nitrate</td><td class="out-of-range">52 mg/L</td><td>0–45 mg/L</td><td><span class="status-badge warning">WARNING</span></td></tr>
+                    <tr><td>ZAN08</td><td>Arsenic</td><td class="out-of-range">0.015 mg/L</td><td>0–0.01 mg/L</td><td><span class="status-badge danger">ALERT</span></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <!-- ===== DRAGGABLE MARKER INFO PANEL ===== -->
+    <div class="marker-info-panel glass-card" id="marker-info-panel" style="display: none;">
+        <div class="marker-info-header" id="marker-info-header">
+            <h3 id="mi-title">📍 Location Name</h3>
+            <button class="mi-close" onclick="closeMarkerInfo()">✕</button>
+        </div>
+        <div class="marker-info-body">
+            <div class="mi-stats">
+                <div class="mi-stat"><span class="mi-label">Status</span><span class="mi-val" id="mi-status">—</span></div>
+                <div class="mi-stat"><span class="mi-label">WQI</span><span class="mi-val" id="mi-wqi">—</span></div>
+                <div class="mi-stat"><span class="mi-label">Last Updated</span><span class="mi-val" id="mi-time">—</span></div>
+                <div class="mi-stat"><span class="mi-label">Last Calibrated</span><span class="mi-val" id="mi-calibrated">Today, 06:00</span></div>
+            </div>
+            <div class="mi-chart-container">
+                <canvas id="mi-history-chart" height="120"></canvas>
+            </div>
+            <p class="mi-desc" id="mi-desc">Detailed information about this specific monitoring station will appear here.</p>
+        </div>
+    </div>
+
+    <!-- ======= ALARM MODAL ======= -->
+    <div class="modal-overlay" id="alarmModal">
+        <div class="modal-content alarm-modal-content">
+            <div class="modal-header">
+                <h2>🚨 <span data-i18n="alarmModal">Alarm Center</span></h2>
+                <button class="modal-close" onclick="closeModal('alarmModal')">✕</button>
+            </div>
+            <div id="modal-alarm-feed" class="alarm-feed" style="max-height:240px; margin-bottom:16px;"></div>
+            <h3 style="margin-bottom:10px;font-size:0.85rem;color:var(--accent-blue);font-weight:700;">
+                ✏️ <span data-i18n="manualEntry">Manual Alarm Entry</span>
+            </h3>
+            <div class="alarm-form">
+                <label>Location</label>
+                <input type="text" id="alarm-location" placeholder="e.g. Guwahati Sector 5">
+                <label>Alert Type</label>
+                <select id="alarm-type">
+                    <option value="High Turbidity">Turbidity Alert</option>
+                    <option value="E.Coli Detected">E.Coli Detection</option>
+                    <option value="pH Anomaly">pH Level Anomaly</option>
+                    <option value="Cholera Suspected">Cholera Suspected</option>
+                    <option value="Typhoid Suspected">Typhoid Suspected</option>
+                    <option value="Flood Risk">Flood Risk</option>
+                    <option value="Cybersecurity Breach">Cybersecurity Breach</option>
+                    <option value="Other">Other</option>
+                </select>
+                <label>Severity</label>
+                <div class="severity-radios">
+                    <label class="sev-radio sev-low"><input type="radio" name="alarm-sev" value="safe"> Low</label>
+                    <label class="sev-radio sev-med"><input type="radio" name="alarm-sev" value="warning" checked> Medium</label>
+                    <label class="sev-radio sev-high"><input type="radio" name="alarm-sev" value="danger"> High</label>
+                    <label class="sev-radio sev-crit"><input type="radio" name="alarm-sev" value="critical"> Critical</label>
+                </div>
+                <label>Assign Officer</label>
+                <select id="alarm-officer">
+                    <option value="">Auto-assign</option>
+                    <option value="Rajesh Kumar">Rajesh Kumar — Guwahati East</option>
+                    <option value="Priya Sharma">Priya Sharma — Guwahati West</option>
+                    <option value="Anil Das">Anil Das — Silchar</option>
+                    <option value="Meena Devi">Meena Devi — Imphal</option>
+                    <option value="Bikash Roy">Bikash Roy — Shillong</option>
+                    <option value="Kavita Singh">Kavita Singh — Kohima</option>
+                    <option value="Deepak Nath">Deepak Nath — Agartala</option>
+                </select>
+                <label>Notes</label>
+                <textarea id="alarm-notes" placeholder="Additional details..."></textarea>
+                <button class="submit-alarm-btn" onclick="submitManualAlarm()" data-i18n="submit">Submit Alarm</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======= DISPATCH ALERT MODAL ======= -->
+    <div class="modal-overlay" id="dispatchModal">
+        <div class="modal-content" style="max-width:420px;">
+            <div class="modal-header">
+                <h2>📨 Dispatch Alert</h2>
+                <button class="modal-close" onclick="closeModal('dispatchModal')">✕</button>
+            </div>
+            <div class="alarm-form">
+                <label>Officer</label>
+                <select id="dispatch-officer">
+                    <option>Rajesh Kumar</option><option>Priya Sharma</option><option>Anil Das</option>
+                    <option>Meena Devi</option><option>Bikash Roy</option><option>Kavita Singh</option>
+                </select>
+                <label>Phone</label>
+                <input type="text" id="dispatch-phone" value="+91 98765 43210" readonly>
+                <label>Message</label>
+                <textarea id="dispatch-msg" rows="3">Urgent: Water contamination alert at your assigned zone. Please report immediately for inspection.</textarea>
+                <div style="display:flex;gap:8px;margin-top:8px;">
+                    <button class="submit-alarm-btn" style="background:#25D366;" onclick="sendDispatch('whatsapp')">Send WhatsApp</button>
+                    <button class="submit-alarm-btn" onclick="sendDispatch('sms')">Send SMS</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======= ADVISORY COMPOSE MODAL ======= -->
+    <div class="modal-overlay" id="advisoryModal">
+        <div class="modal-content" style="max-width:480px;">
+            <div class="modal-header">
+                <h2>⚠️ Publish Advisory</h2>
+                <button class="modal-close" onclick="closeModal('advisoryModal')">✕</button>
+            </div>
+            <div class="alarm-form">
+                <label>Advisory Text</label>
+                <textarea id="advisory-compose-text" rows="3" placeholder="BOIL WATER ADVISORY — ..."></textarea>
+                <label>Affected Zones</label>
+                <input type="text" id="advisory-zones" placeholder="e.g. Guwahati Sector 5, Imphal East">
+                <label>Severity</label>
+                <select id="advisory-severity">
+                    <option value="warning">⚠️ Warning</option>
+                    <option value="danger">🔴 Critical</option>
+                </select>
+                <button class="submit-alarm-btn" onclick="publishAdvisory()" style="margin-top:10px;">Publish Advisory</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======= DATA UPLOAD PORTAL ======= -->
+    <div class="modal-overlay" id="uploadModal">
+        <div class="modal-content" style="max-width:520px;">
+            <div class="modal-header">
+                <h2>📁 Data Upload Portal</h2>
+                <button class="modal-close" onclick="closeModal('uploadModal')">✕</button>
+            </div>
+            <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()"
+                 ondragover="event.preventDefault(); this.classList.add('drag-over')"
+                 ondragleave="this.classList.remove('drag-over')"
+                 ondrop="handleFileDrop(event)">
+                <div class="upload-icon">📄</div>
+                <div class="upload-text">Drag & drop CSV or Excel file here</div>
+                <div class="upload-subtext">or click to browse</div>
+                <input type="file" id="file-input" accept=".csv,.xlsx,.xls" style="display:none" onchange="handleFileSelect(this)">
+            </div>
+            <div class="upload-file-info" id="upload-file-info" style="display:none;">
+                <span id="upload-filename"></span>
+                <span id="upload-filesize"></span>
+            </div>
+            <button class="submit-alarm-btn" onclick="uploadFile()" style="margin-top:12px;">Upload & Process</button>
+        </div>
+    </div>
+
+    <!-- ======= DASHBOARD MODAL ======= -->
+    <div class="modal-overlay" id="dashboardModal">
+        <div class="modal-content" style="max-width:950px;">
+            <div class="modal-header">
+                <h2>📊 <span data-i18n="dashTitle">Risk Analytics Dashboard</span></h2>
+                <button class="modal-close" onclick="closeModal('dashboardModal')">✕</button>
+            </div>
+            <div class="dash-grid">
+                <div class="dash-stat-card">
+                    <div class="stat-label" data-i18n="totalCases">Total Contamination Cases</div>
+                    <div class="stat-value cyan">1,847</div>
+                </div>
+                <div class="dash-stat-card">
+                    <div class="stat-label" data-i18n="riskIndex">Risk Score Index</div>
+                    <div class="stat-value red">72.4</div>
+                </div>
+                <div class="dash-stat-card">
+                    <div class="stat-label" data-i18n="activePool">Current Alert Pool</div>
+                    <div class="stat-value amber">23</div>
+                </div>
+                <div class="dash-stat-card">
+                    <div class="stat-label" data-i18n="labTests">Lab Tests Participated</div>
+                    <div class="stat-value green">2 / 10</div>
+                </div>
+                <div class="dash-stat-card" style="grid-column: 1 / -1;">
+                    <div class="tier-panel">
+                        <div class="tier-label" data-i18n="tierLevel">Monitoring Tier</div>
+                        <div class="tier-value">⭐ Tier 3 — Regional Command</div>
+                    </div>
+                </div>
+                <div class="dash-stat-card dash-chart-wide">
+                    <div class="stat-label">Disease Trend (Last 12 Months)</div>
+                    <div class="dash-chart-container">
+                        <canvas id="trendChart"></canvas>
+                    </div>
+                </div>
+                <div class="dash-stat-card dash-chart-wide" style="grid-column: 1 / -1; margin-top: 15px;">
+                    <div class="stat-label">Regional Water Quality Index (WQI)</div>
+                    <div style="display: flex; justify-content: space-around; padding: 10px 0;">
+                        <div style="width: 150px; text-align: center; position: relative;">
+                            <canvas id="wqiGauge1" height="120"></canvas>
+                            <span style="font-size:0.85rem; color:#64748b; font-weight:600; display:block; margin-top:8px;">Kamrup Metro</span>
+                            <div style="position: absolute; top:45px; left:0; width:100%; text-align:center; font-weight:bold; font-size:1.2rem; color:#ef4444;">42</div>
+                        </div>
+                        <div style="width: 150px; text-align: center; position: relative;">
+                            <canvas id="wqiGauge2" height="120"></canvas>
+                            <span style="font-size:0.85rem; color:#64748b; font-weight:600; display:block; margin-top:8px;">East Khasi Hills</span>
+                            <div style="position: absolute; top:45px; left:0; width:100%; text-align:center; font-weight:bold; font-size:1.2rem; color:#10b981;">88</div>
+                        </div>
+                        <div style="width: 150px; text-align: center; position: relative;">
+                            <canvas id="wqiGauge3" height="120"></canvas>
+                            <span style="font-size:0.85rem; color:#64748b; font-weight:600; display:block; margin-top:8px;">Imphal West</span>
+                            <div style="position: absolute; top:45px; left:0; width:100%; text-align:center; font-weight:bold; font-size:1.2rem; color:#f59e0b;">65</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="predict-section">
+                    <h3 style="font-size:0.95rem;color:var(--accent-blue);margin-bottom:14px;font-weight:700;">
+                        🧠 <span data-i18n="predict">AI Risk Prediction</span>
+                    </h3>
+                    <div class="predict-grid">
+                        <div class="predict-field">
+                            <label data-i18n="ph">pH Level</label>
+                            <input type="range" id="pred-ph" min="0" max="14" step="0.1" value="7.2">
+                            <span class="range-value" id="pred-ph-val">7.2</span>
+                        </div>
+                        <div class="predict-field">
+                            <label data-i18n="turbidity">Turbidity (NTU)</label>
+                            <input type="range" id="pred-turbidity" min="0" max="20" step="0.1" value="3.5">
+                            <span class="range-value" id="pred-turbidity-val">3.5</span>
+                        </div>
+                        <div class="predict-field">
+                            <label data-i18n="nitrate">Nitrate (mg/L)</label>
+                            <input type="range" id="pred-nitrate" min="0" max="100" step="1" value="15">
+                            <span class="range-value" id="pred-nitrate-val">15</span>
+                        </div>
+                        <div class="predict-field">
+                            <label data-i18n="bacteria">Bacteria (CFU)</label>
+                            <input type="range" id="pred-bacteria" min="0" max="10000" step="10" value="450">
+                            <span class="range-value" id="pred-bacteria-val">450</span>
+                        </div>
+                        <div class="predict-field">
+                            <label data-i18n="rainfall">Rainfall (mm)</label>
+                            <input type="range" id="pred-rainfall" min="0" max="1000" step="5" value="150">
+                            <span class="range-value" id="pred-rainfall-val">150</span>
+                        </div>
+                        <div class="predict-field">
+                            <label data-i18n="temp">Temperature (°C)</label>
+                            <input type="range" id="pred-temp" min="10" max="45" step="0.5" value="26">
+                            <span class="range-value" id="pred-temp-val">26</span>
+                        </div>
+                    </div>
+                    <button class="predict-btn" onclick="runPrediction()" data-i18n="runAnalysis">🚀 Run AI Diagnostic</button>
+                    <div class="predict-result" id="predict-result"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======= SCRIPTS ======= -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="/static/js/app.js"></script>
+
+    <!-- ======= IMMUTABLE AUDIT TRAIL MODAL ======= -->
+    <div class="modal-overlay" id="auditModal">
+        <div class="modal-content" style="max-width: 900px; width: 90%;">
+            <div class="modal-header">
+                <h2>🔍 Immutable Audit Trail (SHA-256 Chained)</h2>
+                <button class="modal-close" onclick="closeModal('auditModal')">✕</button>
+            </div>
+            <div class="modal-body">
+                <div style="margin-bottom:15px; font-size:0.82rem; color: var(--safe-green); background: rgba(22,163,74,0.06); padding: 10px; border-radius: 6px; border: 1px solid rgba(22,163,74,0.2);">
+                    <strong>System Integrity:</strong> Verified ✅. All logs are cryptographically chained using SHA-256.
+                </div>
+                <div style="overflow-x: auto;">
+                    <table class="danger-table">
+                        <thead>
+                            <tr>
+                                <th style="width:140px;">Timestamp</th>
+                                <th>User</th>
+                                <th>Action</th>
+                                <th>Details</th>
+                                <th>IP Address</th>
+                                <th style="width: 200px;">Block Hash (SHA-256)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="audit-tbody" style="font-size: 0.75rem;"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======= ENCRYPTED DATA TRANSMISSION VISUALIZER ======= -->
+    <div class="modal-overlay" id="encryptionVisModal">
+        <div class="modal-content" style="max-width: 800px; width: 90%;">
+            <div class="modal-header">
+                <h2>📊 Secure Data Transmission Flow</h2>
+                <button class="modal-close" onclick="closeModal('encryptionVisModal')">✕</button>
+            </div>
+            <div class="modal-body" style="text-align: center;">
+                <p style="color:var(--text-muted); font-size:0.85rem; margin-bottom: 20px;">Real-time visualization of end-to-end encryption architecture (TLS 1.3 / AES-256)</p>
+
+                <div class="enc-vis-container">
+                    <div class="enc-node">
+                        <div class="enc-icon">📡</div>
+                        <div class="enc-label">IoT Sensor Array<br><span style="color:var(--accent-blue);font-size:0.68rem;">(ZAN01-ZAN04)</span></div>
+                    </div>
+                    <div class="enc-flow">
+                        <div class="enc-packet">🔒 AES-256</div>
+                    </div>
+                    <div class="enc-node" style="border-color: var(--accent-blue);">
+                        <div class="enc-icon" style="color:var(--accent-blue);">🗄️</div>
+                        <div class="enc-label">AquaGuard Core<br><span style="color:var(--accent-blue);font-size:0.68rem;">(Decryption & Analysis)</span></div>
+                    </div>
+                    <div class="enc-flow">
+                        <div class="enc-packet">🔒 WSS/TLS 1.3</div>
+                    </div>
+                    <div class="enc-node" style="border-color: var(--safe-green);">
+                        <div class="enc-icon" style="color:var(--safe-green);">💻</div>
+                        <div class="enc-label">Client Dashboard<br><span style="color:var(--safe-green);font-size:0.68rem;">(Secure Render)</span></div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 30px; text-align: left; background: #f8fafc; padding: 15px; border-radius: 6px; border: 1px solid var(--border-card);">
+                    <h4 style="margin-top:0; color:var(--navy);">Security Status</h4>
+                    <ul style="font-size:0.82rem; color:var(--text-mid); padding-left:20px; margin-bottom:0;">
+                        <li><strong style="color:var(--safe-green);">Certificate:</strong> Valid (RSA 4096-bit)</li>
+                        <li><strong style="color:var(--safe-green);">Protocol:</strong> TLS 1.3 Strict</li>
+                        <li><strong style="color:var(--safe-green);">Forward Secrecy:</strong> Enabled (ECDHE)</li>
+                        <li><strong style="color:var(--safe-green);">Node Identity:</strong> Mutually Authenticated (mTLS)</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ======= SOP CHECKLIST DRAWER ======= -->
+    <div class="sop-drawer" id="sop-drawer">
+        <div class="sop-drawer-header">
+            <h3>📋 Standard Operating Procedure</h3>
+            <button class="sop-close" onclick="closeSopDrawer()">✕</button>
+        </div>
+        <div class="sop-type" id="sop-type">E.Coli Detection Protocol</div>
+        <div class="sop-progress-wrap">
+            <div class="sop-progress-bar" id="sop-progress" style="width:0%"></div>
+        </div>
+        <div class="sop-progress-text" id="sop-progress-text">0/8 steps completed</div>
+        <div class="sop-steps" id="sop-steps">
+            <label class="sop-step"><input type="checkbox" onchange="updateSopProgress()"> Isolate water source immediately</label>
+            <label class="sop-step"><input type="checkbox" onchange="updateSopProgress()"> Notify District Health Officer</label>
+            <label class="sop-step"><input type="checkbox" onchange="updateSopProgress()"> Collect confirmation samples (x3)</label>
+            <label class="sop-step"><input type="checkbox" onchange="updateSopProgress()"> Issue boil water advisory to affected zone</label>
+            <label class="sop-step"><input type="checkbox" onchange="updateSopProgress()"> Deploy water tanker supply</label>
+            <label class="sop-step"><input type="checkbox" onchange="updateSopProgress()"> Begin chlorination treatment</label>
+            <label class="sop-step"><input type="checkbox" onchange="updateSopProgress()"> Retest after 48 hours</label>
+            <label class="sop-step"><input type="checkbox" onchange="updateSopProgress()"> Submit incident report</label>
+        </div>
+        <button class="submit-alarm-btn" onclick="submitSopReport()" style="margin-top:12px;">Submit SOP Report</button>
+    </div>
+
+    <!-- Toast Notifications -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+        // Trend chart in dashboard modal
+        document.getElementById('dashboardModal').addEventListener('transitionend', () => {
+            buildTrendChartIfNeeded();
+        });
+
+        const origOpen = openModal;
+        openModal = function(id) {
+            origOpen(id);
+            if (id === 'dashboardModal') setTimeout(buildTrendChartIfNeeded, 100);
+            if (id === 'alarmModal') {
+                const mainFeed = document.getElementById('alarm-feed');
+                const modalFeed = document.getElementById('modal-alarm-feed');
+                if (mainFeed && modalFeed) modalFeed.innerHTML = mainFeed.innerHTML;
+            }
+            if (id === 'auditModal') {
+                if (typeof fetchAuditLog === 'function') fetchAuditLog();
+            }
+        };
+
+        const origOpenFP = openFullPage;
+        openFullPage = function(viewId) {
+            origOpenFP(viewId);
+            if (viewId === 'fp-data-overview' && cachedStats) {
+                document.getElementById('fp-tile-warnings').textContent = cachedStats.warnings;
+                document.getElementById('fp-tile-dangers').textContent = cachedStats.dangers;
+                document.getElementById('fp-tile-monitoring').textContent = cachedStats.monitoring;
+                document.getElementById('fp-tile-contamination').textContent = cachedStats.contamination_events;
+                document.getElementById('fp-tile-risk-areas').textContent = cachedStats.risk_areas;
+                document.getElementById('fp-tile-resolved').textContent = cachedStats.resolved;
+
+                const tbody = document.getElementById('fp-state-table-body');
+                if (tbody && cachedStats.state_data) {
+                    tbody.innerHTML = '';
+                    Object.entries(cachedStats.state_data).forEach(([state, d]) => {
+                        const riskClass = d.outbreak_pct > 50 ? 'out-of-range' : '';
+                        tbody.innerHTML += `<tr>
+                            <td><strong>${state}</strong></td>
+                            <td>${d.avg_ph}</td>
+                            <td>${d.avg_turbidity}</td>
+                            <td>${d.avg_temp}°C</td>
+                            <td>${d.avg_bacteria.toFixed(0)}</td>
+                            <td class="${riskClass}">${d.outbreak_pct}%</td>
+                            <td>${d.samples}</td>
+                        </tr>`;
+                    });
+                }
+            }
+            if (viewId === 'fp-alarms') {
+                const mainFeed = document.getElementById('alarm-feed');
+                const fpFeed = document.getElementById('fp-alarm-feed');
+                if (mainFeed && fpFeed) fpFeed.innerHTML = mainFeed.innerHTML;
+            }
+        };
+
+        let trendBuilt = false;
+        function buildTrendChartIfNeeded() {
+            if (trendBuilt) return;
+            const ctx = document.getElementById('trendChart');
+            if (!ctx) return;
+
+            const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+            const cases = [120, 95, 140, 180, 220, 310, 450, 520, 380, 200, 150, 130];
+
+            new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: months,
+                    datasets: [{
+                        label: 'Contamination Cases',
+                        data: cases,
+                        borderColor: '#2563eb',
+                        backgroundColor: 'rgba(37, 99, 235, 0.08)',
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointBackgroundColor: '#2563eb',
+                        borderWidth: 2,
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    animation: { duration: 1500 },
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { ticks: { color: '#94a3b8', font: { size: 9 } }, grid: { display: false } },
+                        y: { ticks: { color: '#94a3b8', font: { size: 9 } }, grid: { color: 'rgba(0,0,0,0.04)' } },
+                    }
+                }
+            });
+            trendBuilt = true;
+        }
+    </script>
+
+</body>
+</html>
